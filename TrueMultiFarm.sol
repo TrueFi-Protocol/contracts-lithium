@@ -34,33 +34,29 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     struct Rewards {
         // track overall cumulative rewards
         uint256 cumulativeRewardPerToken;
+        // track total rewards
+        uint256 totalClaimedRewards;
+        uint256 totalRewards;
         // track previous cumulate rewards for accounts
         mapping(address => uint256) previousCumulatedRewardPerToken;
         // track claimable rewards for accounts
         mapping(address => uint256) claimableReward;
-        // track total rewards
-        uint256 totalClaimedRewards;
-        uint256 totalRewards;
     }
 
-    // ================ WARNING ==================
-    // ===== THIS CONTRACT IS INITIALIZABLE ======
-    // === STORAGE VARIABLES ARE DECLARED BELOW ==
-    // REMOVAL OR REORDER OF VARIABLES WILL RESULT
-    // ========= IN STORAGE CORRUPTION ===========
-
-    IERC20 public tru;
-    ITrueDistributor public override trueDistributor;
+    struct RewardDistribution {
+        ITrueDistributor distributor;
+        Stakes shares;
+        Rewards farmRewards;
+    }
 
     mapping(IERC20 => Stakes) public stakes;
-    mapping(IERC20 => Rewards) public stakerRewards;
 
-    // Shares of farms in the multifarm
-    Stakes public shares;
-    // Total rewards per farm
-    Rewards public farmRewards;
+    IERC20[] public rewardTokens;
+    mapping(IERC20 => RewardDistribution) _rewardDistributions;
 
-    // ======= STORAGE DECLARATION END ============
+    mapping(IERC20 => IERC20[]) public rewardsAvailable;
+    // rewardToken -> stakingToken -> Rewards
+    mapping(IERC20 => mapping(IERC20 => Rewards)) public stakerRewards;
 
     /**
      * @dev Emitted when an account stakes
@@ -83,6 +79,8 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      */
     event Claim(IERC20 indexed token, address indexed who, uint256 amountClaimed);
 
+    event DistributorAdded(IERC20 indexed rewardToken, ITrueDistributor indexed distributor);
+
     /**
      * @dev Update all rewards associated with the token and msg.sender
      */
@@ -92,12 +90,20 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         _;
     }
 
-    /**
-     * @dev Is there any reward allocation for given token
-     */
-    modifier hasShares(IERC20 token) {
-        require(shares.staked[address(token)] > 0, "TrueMultiFarm: This token has no shares");
-        _;
+    function getDistributor(IERC20 rewardToken) external view returns (ITrueDistributor) {
+        return _rewardDistributions[rewardToken].distributor;
+    }
+
+    function getShares(IERC20 rewardToken, IERC20 stakedToken) external view returns (uint256) {
+        return _rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
+    }
+
+    function getTotalShares(IERC20 rewardToken) external view returns (uint256) {
+        return _rewardDistributions[rewardToken].shares.totalStaked;
+    }
+
+    function getAvailableRewardsForToken(IERC20 stakedToken) external view returns (IERC20[] memory) {
+        return rewardsAvailable[stakedToken];
     }
 
     /**
@@ -107,16 +113,15 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         return stakes[token].staked[staker];
     }
 
-    /**
-     * @dev Initialize staking pool with a Distributor contract
-     * The distributor contract calculates how much TRU rewards this contract
-     * gets, and stores TRU for distribution.
-     * @param _trueDistributor Distributor contract
-     */
-    function initialize(ITrueDistributor _trueDistributor) public initializer {
-        trueDistributor = _trueDistributor;
-        tru = _trueDistributor.trustToken();
-        require(trueDistributor.farm() == address(this), "TrueMultiFarm: Distributor farm is not set");
+    function addDistributor(ITrueDistributor distributor) external onlyOwner {
+        require(distributor.farm() == address(this), "TrueMultiFarm: Distributor farm is not set");
+        IERC20 rewardToken = distributor.trustToken();
+        if (address(_rewardDistributions[rewardToken].distributor) == address(0)) {
+            rewardTokens.push(rewardToken);
+        }
+        _rewardDistributions[rewardToken].distributor = distributor;
+
+        emit DistributorAdded(rewardToken, distributor);
     }
 
     /**
@@ -124,12 +129,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * Also claims any existing rewards.
      * @param amount Amount of tokens to stake
      */
-    function stake(IERC20 token, uint256 amount) external override hasShares(token) update(token) {
+    function stake(IERC20 token, uint256 amount) external override update(token) {
         stakes[token].staked[msg.sender] = stakes[token].staked[msg.sender] + amount;
         stakes[token].totalStaked = stakes[token].totalStaked + amount;
-        if (stakerRewards[token].claimableReward[msg.sender] > 0) {
-            _claim(token);
-        }
+        _claim(token);
 
         token.safeTransferFrom(msg.sender, address(this), amount);
         emit Stake(token, msg.sender, amount);
@@ -179,8 +182,8 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * What proportional share of rewards get distributed to this token?
      * The denominator is visible in the public `shares()` view.
      */
-    function getShare(IERC20 token) external view returns (uint256) {
-        return shares.staked[address(token)];
+    function getShare(IERC20 rewardToken, IERC20 stakedToken) external view returns (uint256) {
+        return _rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
     }
 
     /**
@@ -188,22 +191,45 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * Example: setShares([DAI, USDC], [1, 2]) will ensure that 33.(3)% of rewards will go to DAI farm and rest to USDC farm
      * If later setShares([DAI, TUSD], [2, 1]) will be called then shares of DAI will grow to 2, shares of USDC won't change and shares of TUSD will be 1
      * So this will give 40% of rewards going to DAI farm, 40% to USDC and 20% to TUSD
-     * @param tokens Token addresses
+     * @param stakedTokens Token addresses
      * @param updatedShares share of the i-th token in the multifarm
      */
-    function setShares(IERC20[] calldata tokens, uint256[] calldata updatedShares) external onlyOwner {
-        uint256 tokensLength = tokens.length;
+    function setShares(
+        IERC20 rewardToken,
+        IERC20[] calldata stakedTokens,
+        uint256[] calldata updatedShares
+    ) external onlyOwner {
+        uint256 tokensLength = stakedTokens.length;
 
         require(tokensLength == updatedShares.length, "TrueMultiFarm: Array lengths mismatch");
         distribute();
 
         for (uint256 i = 0; i < tokensLength; i++) {
-            _updateClaimableRewardsForFarm(tokens[i]);
+            _updateClaimableRewardsForFarm(rewardToken, stakedTokens[i]);
         }
+
+        Stakes storage shares = _rewardDistributions[rewardToken].shares;
+
         for (uint256 i = 0; i < tokensLength; i++) {
-            uint256 oldStaked = shares.staked[address(tokens[i])];
-            shares.staked[address(tokens[i])] = updatedShares[i];
-            shares.totalStaked = shares.totalStaked - (oldStaked) + (updatedShares[i]);
+            uint256 oldStaked = shares.staked[address(stakedTokens[i])];
+            shares.staked[address(stakedTokens[i])] = updatedShares[i];
+            shares.totalStaked = shares.totalStaked - oldStaked + updatedShares[i];
+            if (updatedShares[i] == 0) {
+                _removeReward(rewardToken, stakedTokens[i]);
+            } else if (oldStaked == 0) {
+                rewardsAvailable[stakedTokens[i]].push(rewardToken);
+            }
+        }
+    }
+
+    function _removeReward(IERC20 rewardToken, IERC20 stakedToken) internal {
+        IERC20[] storage rewardsAvailableForToken = rewardsAvailable[stakedToken];
+        for (uint256 i = 0; i < rewardsAvailableForToken.length; i++) {
+            if (rewardsAvailableForToken[i] == rewardToken) {
+                rewardsAvailableForToken[i] = rewardsAvailableForToken[rewardsAvailableForToken.length - 1];
+                rewardsAvailableForToken.pop();
+                return;
+            }
         }
     }
 
@@ -224,72 +250,102 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * @dev Internal claim function
      */
     function _claim(IERC20 token) internal {
-        uint256 rewardToClaim = stakerRewards[token].claimableReward[msg.sender];
+        for (uint256 i = 0; i < rewardsAvailable[token].length; i++) {
+            IERC20 rewardToken = rewardsAvailable[token][i];
+            uint256 rewardToClaim = stakerRewards[rewardToken][token].claimableReward[msg.sender];
+            if (rewardToClaim == 0) {
+                continue;
+            }
 
-        stakerRewards[token].totalClaimedRewards += (rewardToClaim);
-        farmRewards.totalClaimedRewards += (rewardToClaim);
+            stakerRewards[rewardToken][token].totalClaimedRewards += rewardToClaim;
+            stakerRewards[rewardToken][token].claimableReward[msg.sender] = 0;
 
-        stakerRewards[token].claimableReward[msg.sender] = 0;
-        farmRewards.claimableReward[address(token)] -= (rewardToClaim);
+            Rewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+            farmRewards.totalClaimedRewards += rewardToClaim;
+            farmRewards.claimableReward[address(token)] -= rewardToClaim;
 
-        tru.safeTransfer(msg.sender, rewardToClaim);
-        emit Claim(token, msg.sender, rewardToClaim);
+            rewardToken.safeTransfer(msg.sender, rewardToClaim);
+            emit Claim(token, msg.sender, rewardToClaim);
+        }
+    }
+
+    function claimable(
+        IERC20 rewardToken,
+        IERC20 stakedToken,
+        address account
+    ) external view returns (uint256) {
+        return _claimable(rewardToken, stakedToken, account);
     }
 
     /**
      * @dev View to estimate the claimable reward for an account that is staking token
      * @return claimable rewards for account
      */
-    function claimable(IERC20 token, address account) external view returns (uint256) {
-        if (stakes[token].staked[account] == 0) {
-            return stakerRewards[token].claimableReward[account];
+    function _claimable(
+        IERC20 rewardToken,
+        IERC20 stakedToken,
+        address account
+    ) internal view returns (uint256) {
+        Rewards storage _stakerRewards = stakerRewards[rewardToken][stakedToken];
+
+        if (stakes[stakedToken].staked[account] == 0) {
+            return _stakerRewards.claimableReward[account];
         }
         // estimate pending reward from distributor
-        uint256 pending = _pendingDistribution(token);
+        uint256 pending = _pendingDistribution(rewardToken, stakedToken);
         // calculate total rewards (including pending)
-        uint256 newTotalRewards = (pending + (stakerRewards[token].totalClaimedRewards)) * (PRECISION);
+        uint256 newTotalRewards = (pending + _stakerRewards.totalClaimedRewards) * PRECISION;
         // calculate block reward
-        uint256 totalBlockReward = newTotalRewards - (stakerRewards[token].totalRewards);
-        // calculate next cumulative reward per token
-        uint256 nextcumulativeRewardPerToken = stakerRewards[token].cumulativeRewardPerToken +
-            (totalBlockReward / (stakes[token].totalStaked));
-        // return claimable reward for this account
+        uint256 totalBlockReward = newTotalRewards - _stakerRewards.totalRewards;
+        // calculate next cumulative reward per stakedToken
+        uint256 nextcumulativeRewardPerToken = _stakerRewards.cumulativeRewardPerToken +
+            (totalBlockReward / stakes[stakedToken].totalStaked);
         return
-            stakerRewards[token].claimableReward[account] +
-            ((stakes[token].staked[account] *
-                (nextcumulativeRewardPerToken - (stakerRewards[token].previousCumulatedRewardPerToken[account]))) / (PRECISION));
+            _stakerRewards.claimableReward[account] +
+            ((nextcumulativeRewardPerToken - _stakerRewards.previousCumulatedRewardPerToken[account]) *
+                stakes[stakedToken].staked[account]) /
+            PRECISION;
     }
 
-    function _pendingDistribution(IERC20 token) internal view returns (uint256) {
+    function _pendingDistribution(IERC20 rewardToken, IERC20 stakedToken) internal view returns (uint256) {
+        Stakes storage shares = _rewardDistributions[rewardToken].shares;
+        Rewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+        ITrueDistributor distributor = _rewardDistributions[rewardToken].distributor;
         // estimate pending reward from distributor
-        uint256 pending = trueDistributor.farm() == address(this) ? trueDistributor.nextDistribution() : 0;
+        uint256 pending = distributor.farm() == address(this) ? distributor.nextDistribution() : 0;
 
         // calculate new total rewards ever received by farm
-        uint256 newTotalRewards = (tru.balanceOf(address(this)) + (pending) + (farmRewards.totalClaimedRewards)) * (PRECISION);
+        uint256 newTotalRewards = (rewardToken.balanceOf(address(this)) + pending + farmRewards.totalClaimedRewards) * PRECISION;
         // calculate new rewards that were received since previous distribution
-        uint256 totalBlockReward = newTotalRewards - (farmRewards.totalRewards);
+        uint256 totalBlockReward = newTotalRewards - farmRewards.totalRewards;
 
         uint256 cumulativeRewardPerShare = farmRewards.cumulativeRewardPerToken;
         if (shares.totalStaked > 0) {
-            cumulativeRewardPerShare += (totalBlockReward / (shares.totalStaked));
+            cumulativeRewardPerShare += totalBlockReward / shares.totalStaked;
         }
 
-        uint256 newReward = (shares.staked[address(token)] *
-            (cumulativeRewardPerShare - (farmRewards.previousCumulatedRewardPerToken[address(token)]))) / (PRECISION);
+        uint256 newReward = (shares.staked[address(stakedToken)] *
+            (cumulativeRewardPerShare - farmRewards.previousCumulatedRewardPerToken[address(stakedToken)])) / PRECISION;
 
-        return farmRewards.claimableReward[address(token)] + (newReward);
+        return farmRewards.claimableReward[address(stakedToken)] + newReward;
     }
 
     /**
      * @dev Distribute rewards from distributor and increase cumulativeRewardPerShare in Multifarm
      */
     function distribute() internal {
-        // pull TRU from distributor
-        // only pull if there is distribution and distributor farm is set to this farm
-        if (trueDistributor.nextDistribution() > 0 && trueDistributor.farm() == address(this)) {
-            trueDistributor.distribute();
+        // TODO optimize to distribute only tokens that matter
+        for (uint256 i = 0; i < rewardTokens.length; i++) {
+            _distribute(rewardTokens[i]);
         }
-        _updateCumulativeRewardPerShare();
+    }
+
+    function _distribute(IERC20 rewardToken) internal {
+        ITrueDistributor distributor = _rewardDistributions[rewardToken].distributor;
+        if (distributor.nextDistribution() > 0 && distributor.farm() == address(this)) {
+            distributor.distribute();
+        }
+        _updateCumulativeRewardPerShare(rewardToken);
     }
 
     /**
@@ -299,16 +355,18 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * 2. See how much reward we got since previous update (R)
      * 3. Increase cumulativeRewardPerToken by R/total shares
      */
-    function _updateCumulativeRewardPerShare() internal {
+    function _updateCumulativeRewardPerShare(IERC20 rewardToken) internal {
+        Rewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
         // calculate new total rewards ever received by farm
-        uint256 newTotalRewards = (tru.balanceOf(address(this)) + (farmRewards.totalClaimedRewards)) * (PRECISION);
+        uint256 newTotalRewards = (rewardToken.balanceOf(address(this)) + (farmRewards.totalClaimedRewards)) * PRECISION;
         // calculate new rewards that were received since previous distribution
-        uint256 rewardSinceLastUpdate = newTotalRewards - (farmRewards.totalRewards);
+        uint256 rewardSinceLastUpdate = newTotalRewards - farmRewards.totalRewards;
         // update info about total farm rewards
         farmRewards.totalRewards = newTotalRewards;
         // if there are sub farms increase their value per share
-        if (shares.totalStaked > 0) {
-            farmRewards.cumulativeRewardPerToken += (rewardSinceLastUpdate / (shares.totalStaked));
+        uint256 totalStaked = _rewardDistributions[rewardToken].shares.totalStaked;
+        if (totalStaked > 0) {
+            farmRewards.cumulativeRewardPerToken += rewardSinceLastUpdate / totalStaked;
         }
     }
 
@@ -316,52 +374,58 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * @dev Update rewards for the farm on token and for the staker.
      * The function must be called before any modification of staker's stake and to update values when claiming rewards
      */
-    function updateRewards(IERC20 token) internal {
-        _updateTokenFarmRewards(token);
-        _updateClaimableRewardsForStaker(token);
+    function updateRewards(IERC20 stakedToken) internal {
+        for (uint256 i = 0; i < rewardsAvailable[stakedToken].length; i++) {
+            _updateTokenFarmRewards(rewardsAvailable[stakedToken][i], stakedToken);
+            _updateClaimableRewardsForStaker(rewardsAvailable[stakedToken][i], stakedToken);
+        }
     }
 
     /**
      * @dev Update rewards data for the token farm - update all values associated with total available rewards for the farm inside multifarm
      */
-    function _updateTokenFarmRewards(IERC20 token) internal {
-        _updateClaimableRewardsForFarm(token);
-        _updateTotalRewards(token);
+    function _updateTokenFarmRewards(IERC20 rewardToken, IERC20 stakedToken) internal {
+        _updateClaimableRewardsForFarm(rewardToken, stakedToken);
+        _updateTotalRewards(rewardToken, stakedToken);
     }
 
     /**
      * @dev Increase total claimable rewards for token farm in multifarm.
      * This function must be called before share of the token in multifarm is changed and to update total claimable rewards for the staker
      */
-    function _updateClaimableRewardsForFarm(IERC20 token) internal {
-        if (shares.staked[address(token)] == 0) {
-            return;
-        }
-        // claimableReward += staked(token) * (cumulativeRewardPerShare - previousCumulatedRewardPerShare(token))
-        uint256 newReward = (shares.staked[address(token)] *
-            (farmRewards.cumulativeRewardPerToken - (farmRewards.previousCumulatedRewardPerToken[address(token)]))) / (PRECISION);
+    function _updateClaimableRewardsForFarm(IERC20 rewardToken, IERC20 stakedToken) internal {
+        Rewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+        uint256 tokenShares = _rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
 
-        farmRewards.claimableReward[address(token)] += (newReward);
-        farmRewards.previousCumulatedRewardPerToken[address(token)] = farmRewards.cumulativeRewardPerToken;
+        if (tokenShares > 0) {
+            uint256 newReward = (tokenShares *
+                (farmRewards.cumulativeRewardPerToken - farmRewards.previousCumulatedRewardPerToken[address(stakedToken)])) /
+                PRECISION;
+
+            farmRewards.claimableReward[address(stakedToken)] += newReward;
+        }
+        farmRewards.previousCumulatedRewardPerToken[address(stakedToken)] = farmRewards.cumulativeRewardPerToken;
     }
 
     /**
      * @dev Update total reward for the farm
      * Get total farm reward as claimable rewards for the given farm plus total rewards claimed by stakers in the farm
      */
-    function _updateTotalRewards(IERC20 token) internal {
-        uint256 totalRewards = (farmRewards.claimableReward[address(token)] + (stakerRewards[token].totalClaimedRewards)) *
-            (PRECISION);
-        // calculate received reward
-        uint256 rewardReceivedSinceLastUpdate = totalRewards - (stakerRewards[token].totalRewards);
+    function _updateTotalRewards(IERC20 rewardToken, IERC20 stakedToken) internal {
+        Rewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+        Rewards storage _stakerRewards = stakerRewards[rewardToken][stakedToken];
 
-        // if there are stakers of the token, increase cumulativeRewardPerToken by newly received reward per total staked amount
-        if (stakes[token].totalStaked > 0) {
-            stakerRewards[token].cumulativeRewardPerToken += (rewardReceivedSinceLastUpdate / (stakes[token].totalStaked));
+        uint256 totalRewards = (farmRewards.claimableReward[address(stakedToken)] + _stakerRewards.totalClaimedRewards) * PRECISION;
+        // calculate received reward
+        uint256 rewardReceivedSinceLastUpdate = totalRewards - _stakerRewards.totalRewards;
+
+        // if there are stakers of the stakedToken, increase cumulativeRewardPerToken by newly received reward per total staked amount
+        if (stakes[stakedToken].totalStaked > 0) {
+            _stakerRewards.cumulativeRewardPerToken += rewardReceivedSinceLastUpdate / stakes[stakedToken].totalStaked;
         }
 
         // update farm rewards
-        stakerRewards[token].totalRewards = totalRewards;
+        _stakerRewards.totalRewards = totalRewards;
     }
 
     /**
@@ -370,13 +434,17 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * staker's stake times the change of cumulativeRewardPerToken for the given token since this function was previously called
      * This method must be called before any change of staker's stake
      */
-    function _updateClaimableRewardsForStaker(IERC20 token) internal {
-        // increase claimable reward for sender by amount staked by the staker times the growth of cumulativeRewardPerToken since last update
-        stakerRewards[token].claimableReward[msg.sender] += ((stakes[token].staked[msg.sender] *
-            (stakerRewards[token].cumulativeRewardPerToken - (stakerRewards[token].previousCumulatedRewardPerToken[msg.sender]))) /
-            (PRECISION));
+    function _updateClaimableRewardsForStaker(IERC20 rewardToken, IERC20 stakedToken) internal {
+        Rewards storage _stakerRewards = stakerRewards[rewardToken][stakedToken];
 
+        if (stakes[stakedToken].staked[msg.sender] > 0) {
+            // increase claimable reward for sender by amount staked by the staker times the growth of cumulativeRewardPerToken since last update
+            _stakerRewards.claimableReward[msg.sender] +=
+                ((_stakerRewards.cumulativeRewardPerToken - _stakerRewards.previousCumulatedRewardPerToken[msg.sender]) *
+                    stakes[stakedToken].staked[msg.sender]) /
+                PRECISION;
+        }
         // update previous cumulative for sender
-        stakerRewards[token].previousCumulatedRewardPerToken[msg.sender] = stakerRewards[token].cumulativeRewardPerToken;
+        _stakerRewards.previousCumulatedRewardPerToken[msg.sender] = _stakerRewards.cumulativeRewardPerToken;
     }
 }

@@ -94,6 +94,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         return _rewardDistributions[rewardToken].distributor;
     }
 
+    function getRewardTokens() external view returns (IERC20[] memory) {
+        return rewardTokens;
+    }
+
     function getShares(IERC20 rewardToken, IERC20 stakedToken) external view returns (uint256) {
         return _rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
     }
@@ -122,6 +126,19 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         _rewardDistributions[rewardToken].distributor = distributor;
 
         emit DistributorAdded(rewardToken, distributor);
+    }
+
+    function removeDistributor(IERC20 rewardToken) external onlyOwner {
+        _distribute(rewardToken);
+        for (uint256 i = 0; i < rewardTokens.length; i++) {
+            if (rewardTokens[i] == rewardToken) {
+                rewardTokens[i] = rewardTokens[rewardTokens.length - 1];
+                rewardTokens.pop();
+                break;
+            }
+        }
+
+        delete _rewardDistributions[rewardToken].distributor;
     }
 
     /**
@@ -335,8 +352,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         Stakes storage shares = _rewardDistributions[rewardToken].shares;
         Rewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
         ITrueDistributor distributor = _rewardDistributions[rewardToken].distributor;
-        // estimate pending reward from distributor
-        uint256 pending = distributor.farm() == address(this) ? distributor.nextDistribution() : 0;
+
+        uint256 pending = 0;
+        if (address(distributor) != address(0) && distributor.farm() == address(this)) {
+            pending = distributor.nextDistribution();
+        }
 
         // calculate new total rewards ever received by farm
         uint256 newTotalRewards = (rewardToken.balanceOf(address(this)) + pending + farmRewards.totalClaimedRewards) * PRECISION;
@@ -366,7 +386,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
 
     function _distribute(IERC20 rewardToken) internal {
         ITrueDistributor distributor = _rewardDistributions[rewardToken].distributor;
-        if (distributor.nextDistribution() > 0 && distributor.farm() == address(this)) {
+        if (address(distributor) != address(0) && distributor.nextDistribution() > 0 && distributor.farm() == address(this)) {
             distributor.distribute();
         }
         _updateCumulativeRewardPerShare(rewardToken);

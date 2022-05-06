@@ -132,7 +132,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     function stake(IERC20 token, uint256 amount) external override update(token) {
         stakes[token].staked[msg.sender] = stakes[token].staked[msg.sender] + amount;
         stakes[token].totalStaked = stakes[token].totalStaked + amount;
-        _claim(token);
+        _claimAll(token);
 
         token.safeTransferFrom(msg.sender, address(this), amount);
         emit Stake(token, msg.sender, amount);
@@ -147,17 +147,35 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     }
 
     /**
-     * @dev Claim TRU rewards
+     * @dev Claim all rewards
      */
-    function claim(IERC20[] calldata tokens) external override {
-        uint256 tokensLength = tokens.length;
+    function claim(IERC20[] calldata stakedTokens) external override {
+        uint256 stakedTokensLength = stakedTokens.length;
 
         distribute();
-        for (uint256 i = 0; i < tokensLength; i++) {
-            updateRewards(tokens[i]);
+        for (uint256 i = 0; i < stakedTokensLength; i++) {
+            updateRewards(stakedTokens[i]);
         }
-        for (uint256 i = 0; i < tokensLength; i++) {
-            _claim(tokens[i]);
+        for (uint256 i = 0; i < stakedTokensLength; i++) {
+            _claimAll(stakedTokens[i]);
+        }
+    }
+
+    /**
+     * @dev Claim rewardTokens
+     */
+    function claim(IERC20[] calldata stakedTokens, IERC20[] calldata rewards) external {
+        uint256 stakedTokensLength = stakedTokens.length;
+        uint256 rewardTokensLength = rewards.length;
+
+        for (uint256 i = 0; i < rewardTokensLength; i++) {
+            _distribute(rewards[i]);
+        }
+        for (uint256 i = 0; i < stakedTokensLength; i++) {
+            updateRewards(stakedTokens[i], rewards);
+        }
+        for (uint256 i = 0; i < stakedTokensLength; i++) {
+            _claim(stakedTokens[i], rewards);
         }
     }
 
@@ -173,7 +191,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
             updateRewards(tokens[i]);
         }
         for (uint256 i = 0; i < tokensLength; i++) {
-            _claim(tokens[i]);
+            _claimAll(tokens[i]);
             _unstake(tokens[i], stakes[tokens[i]].staked[msg.sender]);
         }
     }
@@ -246,12 +264,18 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         emit Unstake(token, msg.sender, amount);
     }
 
+    function _claimAll(IERC20 token) internal {
+        IERC20[] memory rewards = rewardsAvailable[token];
+        _claim(token, rewards);
+    }
+
     /**
      * @dev Internal claim function
      */
-    function _claim(IERC20 token) internal {
-        for (uint256 i = 0; i < rewardsAvailable[token].length; i++) {
-            IERC20 rewardToken = rewardsAvailable[token][i];
+    function _claim(IERC20 token, IERC20[] memory rewards) internal {
+        uint256 rewardsLength = rewards.length;
+        for (uint256 i = 0; i < rewardsLength; i++) {
+            IERC20 rewardToken = rewards[i];
             uint256 rewardToClaim = stakerRewards[rewardToken][token].claimableReward[msg.sender];
             if (rewardToClaim == 0) {
                 continue;
@@ -375,9 +399,20 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * The function must be called before any modification of staker's stake and to update values when claiming rewards
      */
     function updateRewards(IERC20 stakedToken) internal {
-        for (uint256 i = 0; i < rewardsAvailable[stakedToken].length; i++) {
+        uint256 rewardLength = rewardsAvailable[stakedToken].length;
+
+        for (uint256 i = 0; i < rewardLength; i++) {
             _updateTokenFarmRewards(rewardsAvailable[stakedToken][i], stakedToken);
             _updateClaimableRewardsForStaker(rewardsAvailable[stakedToken][i], stakedToken);
+        }
+    }
+
+    function updateRewards(IERC20 stakedToken, IERC20[] memory rewards) internal {
+        uint256 rewardLength = rewards.length;
+
+        for (uint256 i = 0; i < rewardLength; i++) {
+            _updateTokenFarmRewards(rewards[i], stakedToken);
+            _updateClaimableRewardsForStaker(rewards[i], stakedToken);
         }
     }
 

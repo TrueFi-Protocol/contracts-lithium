@@ -3,7 +3,7 @@ pragma solidity 0.8.10;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import {IAllowList} from "./IAllowList.sol";
+import {IAllowList} from "./interfaces/IAllowList.sol";
 
 contract AllowList is AccessControl, IAllowList {
     mapping(uint256 => bytes32) public roots;

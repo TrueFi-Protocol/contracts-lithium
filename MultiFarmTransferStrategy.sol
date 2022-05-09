@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.10;
 
-import {ITransferStrategy} from "../interfaces/ITransferStrategy.sol";
+import {ITransferStrategy} from "./interfaces/ITransferStrategy.sol";
 
 contract MultiFarmTransferStrategy is ITransferStrategy {
     address public immutable multiFarm;

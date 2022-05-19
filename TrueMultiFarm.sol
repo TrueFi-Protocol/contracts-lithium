@@ -348,7 +348,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      */
     function _updateCumulativeRewardPerShare(IERC20 rewardToken) internal {
         FarmRewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
-        uint256 newUnclaimedRewards = rewardToken.balanceOf(address(this));
+        uint256 newUnclaimedRewards = _rewardBalance(rewardToken);
         uint256 rewardSinceLastUpdate = (newUnclaimedRewards - farmRewards.unclaimedRewards) * PRECISION;
 
         farmRewards.unclaimedRewards = newUnclaimedRewards;
@@ -378,6 +378,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         for (uint256 i = 0; i < rewardLength; i++) {
             _updateTokenFarmRewards(rewards[i], stakedToken);
         }
+    }
+
+    function _rewardBalance(IERC20 rewardToken) internal view returns (uint256) {
+        return rewardToken.balanceOf(address(this)) - stakes[rewardToken].totalStaked;
     }
 
     function _updateTokenFarmRewards(IERC20 rewardToken, IERC20 stakedToken) internal {
@@ -431,7 +435,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
             pending = distributor.nextDistribution();
         }
 
-        uint256 newUnclaimedRewards = rewardToken.balanceOf(address(this)) + pending;
+        uint256 newUnclaimedRewards = _rewardBalance(rewardToken) + pending;
         return newUnclaimedRewards - farmRewards.unclaimedRewards;
     }
 

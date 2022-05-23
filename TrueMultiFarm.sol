@@ -364,11 +364,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         uint256 newUnclaimedRewards = _rewardBalance(rewardToken);
         uint256 rewardSinceLastUpdate = (newUnclaimedRewards - farmRewards.unclaimedRewards) * PRECISION;
 
-        farmRewards.unclaimedRewards = newUnclaimedRewards;
-
         // if there are sub farms increase their value per share
         uint256 totalStaked = _rewardDistributions[rewardToken].shares.totalStaked;
         if (totalStaked > 0) {
+            farmRewards.unclaimedRewards = newUnclaimedRewards;
             farmRewards.cumulativeRewardPerShare += rewardSinceLastUpdate / totalStaked;
         }
     }

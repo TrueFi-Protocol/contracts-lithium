@@ -337,8 +337,9 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * @dev Distribute rewards from distributor and increase cumulativeRewardPerShare in Multifarm
      */
     function distribute() internal {
+        uint256 rewardTokensLength = rewardTokens.length;
         // TODO optimize to distribute only tokens that matter
-        for (uint256 i = 0; i < rewardTokens.length; i++) {
+        for (uint256 i = 0; i < rewardTokensLength; i++) {
             _distribute(rewardTokens[i]);
         }
     }

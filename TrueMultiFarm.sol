@@ -409,7 +409,9 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
                 (cumulativeRewardPerShareChange * distribution.shares.staked[address(stakedToken)]) /
                 totalStaked;
         } else {
-            undistributedRewards[rewardToken] += cumulativeRewardPerShareChange / PRECISION;
+            undistributedRewards[rewardToken] +=
+                (cumulativeRewardPerShareChange * distribution.shares.staked[address(stakedToken)]) /
+                PRECISION;
         }
         farmRewards.previousCumulatedRewardPerShare[address(stakedToken)] = farmRewards.cumulativeRewardPerShare;
     }

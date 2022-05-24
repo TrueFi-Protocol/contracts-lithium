@@ -3,8 +3,7 @@ pragma solidity ^0.8.10;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IIdleCDOStrategy} from "./IIdleCDOStrategy.sol";
-import {ITrueMultiFarm} from "../interfaces/ITrueMultiFarm.sol";
-import {ITruefiPool, IERC20WithDecimals} from "./ITruefiPool.sol";
+import {ITruefiPool, IERC20WithDecimals, ITrueLegacyMultiFarm} from "./ITruefiPool.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -13,16 +12,33 @@ import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/
 
 contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, IIdleCDOStrategy {
     using SafeERC20 for ITruefiPool;
+    using SafeERC20 for IERC20;
     using SafeERC20 for IERC20WithDecimals;
 
-    ITruefiPool private _pool;
-    ITrueMultiFarm internal _farm;
-    IERC20WithDecimals private _token;
+    uint256 private constant PRECISION = 1e30;
 
-    function initialize(ITruefiPool pool, ITrueMultiFarm farm) external initializer {
+    ITruefiPool private _pool;
+    ITrueLegacyMultiFarm internal _farm;
+    IERC20WithDecimals private _token;
+    IERC20WithDecimals internal _rewardToken;
+
+    uint8 internal _rewardTokenDecimals;
+    uint8 internal _poolDecimals;
+
+    uint256 public cumulativeRewardsPerToken;
+    mapping(address => uint256) public stakerRewardsPerToken;
+
+    function initialize(ITruefiPool pool, ITrueLegacyMultiFarm farm) external initializer {
         _pool = pool;
         _token = pool.token();
         _farm = farm;
+        _rewardToken = farm.rewardToken();
+        _rewardTokenDecimals = _rewardToken.decimals();
+        _poolDecimals = _pool.decimals();
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
     }
 
     function token() external view returns (address) {
@@ -41,9 +57,43 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return 10**_token.decimals();
     }
 
-    function redeemRewards(bytes calldata _extraData) external pure returns (uint256[] memory) {
-        _extraData[0];
-        revert("Not implemented");
+    function redeemRewards(bytes calldata) external returns (uint256[] memory) {
+        uint256 balanceBefore = _rewardToken.balanceOf(address(this));
+        _farm.claim(_getTokensToClaim());
+        uint256 balanceAfter = _rewardToken.balanceOf(address(this));
+        uint256 claimedRewards = balanceAfter - balanceBefore;
+
+        uint256 totalStaked = _farm.staked(_pool, address(this));
+
+        cumulativeRewardsPerToken += _getNewCumulativeRewardsPerToken(claimedRewards, totalStaked);
+
+        uint256 stakerRewards = _getStakerRewards();
+        stakerRewardsPerToken[msg.sender] = cumulativeRewardsPerToken;
+        _rewardToken.safeTransfer(msg.sender, stakerRewards);
+
+        return _getRewardsArray(stakerRewards);
+    }
+
+    function _getNewCumulativeRewardsPerToken(uint256 claimedRewards, uint256 totalStaked) internal view returns (uint256) {
+        uint256 normalizedClaimedRewards = _normalize(claimedRewards, _rewardTokenDecimals);
+        uint256 normalizedTotalStaked = _normalize(totalStaked, _poolDecimals);
+        return (normalizedClaimedRewards * PRECISION) / normalizedTotalStaked;
+    }
+
+    function _getStakerRewards() internal view returns (uint256) {
+        uint256 cumulatedStakerRewardsPerToken = cumulativeRewardsPerToken - stakerRewardsPerToken[msg.sender];
+        uint256 normalizedStakerBalance = _normalize(this.balanceOf(msg.sender), this.decimals());
+        return _denormalize((cumulatedStakerRewardsPerToken * normalizedStakerBalance) / PRECISION, _rewardTokenDecimals);
+    }
+
+    function _getTokensToClaim() internal view returns (IERC20[] memory tokens) {
+        tokens = new IERC20[](1);
+        tokens[0] = IERC20(_pool);
+    }
+
+    function _getRewardsArray(uint256 rewards) internal pure returns (uint256[] memory rewardsArray) {
+        rewardsArray = new uint256[](1);
+        rewardsArray[0] = rewards;
     }
 
     function pullStkAAVE() external pure returns (uint256) {
@@ -58,22 +108,30 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         revert("Not implemented");
     }
 
-    function deposit(uint256 _amount) external returns (uint256) {
+    function deposit(uint256 _amount) external returns (uint256 tfPoolTokensReceived) {
         require(_amount > 0, "TruefiPoolStrategy: Deposit amount must be greater than 0");
 
         _token.safeTransferFrom(msg.sender, address(this), _amount);
         _token.approve(address(_pool), _amount);
-        uint256 balanceBefore = _pool.balanceOf(address(this));
+        uint256 tfTokensBalanceBefore = _pool.balanceOf(address(this));
         _pool.join(_amount);
-        uint256 balanceAfter = _pool.balanceOf(address(this));
+        uint256 tfTokensBalanceAfter = _pool.balanceOf(address(this));
 
-        uint256 tfPoolTokensReceived = balanceAfter - balanceBefore;
+        tfPoolTokensReceived = tfTokensBalanceAfter - tfTokensBalanceBefore;
         _mint(msg.sender, tfPoolTokensReceived);
 
-        _pool.approve(address(_farm), tfPoolTokensReceived);
-        _farm.stake(_pool, tfPoolTokensReceived);
+        uint256 totalStaked = _farm.staked(_pool, address(this));
 
-        return tfPoolTokensReceived;
+        _pool.approve(address(_farm), tfPoolTokensReceived);
+        uint256 rewardsBalanceBefore = _rewardToken.balanceOf(address(this));
+        _farm.stake(_pool, tfPoolTokensReceived);
+        uint256 rewardsBalanceAfter = _rewardToken.balanceOf(address(this));
+
+        if (totalStaked != 0) {
+            uint256 claimedRewards = rewardsBalanceAfter - rewardsBalanceBefore;
+            cumulativeRewardsPerToken += _getNewCumulativeRewardsPerToken(claimedRewards, totalStaked);
+            stakerRewardsPerToken[msg.sender] = cumulativeRewardsPerToken;
+        }
     }
 
     function redeem(uint256 _amount) external returns (uint256 tokensReceived) {
@@ -86,6 +144,8 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
 
         tokensReceived = balanceAfter - balanceBefore;
         _token.safeTransfer(msg.sender, tokensReceived);
+
+        // TODO: set cumulativeRewardsPerToken + rewards
     }
 
     function redeemUnderlying(uint256 _amount) external pure returns (uint256) {

@@ -7,10 +7,22 @@ interface IERC20WithDecimals is IERC20 {
     function decimals() external view returns (uint8);
 }
 
-interface ITruefiPool is IERC20 {
+interface ITruefiPool is IERC20WithDecimals {
     function token() external view returns (IERC20WithDecimals);
 
     function join(uint256 amount) external;
 
     function liquidExit(uint256 amount) external;
+}
+
+interface ITrueLegacyMultiFarm {
+    function rewardToken() external view returns (IERC20WithDecimals);
+
+    function stake(IERC20 token, uint256 amount) external;
+
+    function unstake(IERC20 token, uint256 amount) external;
+
+    function claim(IERC20[] calldata tokens) external;
+
+    function staked(IERC20 token, address staker) external view returns (uint256);
 }

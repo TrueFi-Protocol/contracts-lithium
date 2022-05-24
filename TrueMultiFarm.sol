@@ -84,7 +84,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * @dev Update all rewards associated with the token and msg.sender
      */
     modifier update(IERC20 token) {
-        distribute();
+        IERC20[] memory _rewardsAvailable = rewardsAvailable[token];
+        uint256 _rewardsAvailableLength = _rewardsAvailable.length;
+        for (uint256 i; i < _rewardsAvailableLength; i++) {
+            _distribute(_rewardsAvailable[i]);
+        }
         updateRewards(token);
         _;
     }

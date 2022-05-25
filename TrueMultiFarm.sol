@@ -46,16 +46,22 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         FarmRewards farmRewards;
     }
 
+    // stakedToken => stake info
     mapping(IERC20 => Stakes) public stakes;
 
-    IERC20[] public rewardTokens;
+    // rewardToken => reward info
     mapping(IERC20 => RewardDistribution) _rewardDistributions;
 
+    // stakedToken => rewardToken[]
     mapping(IERC20 => IERC20[]) public rewardsAvailable;
-    // rewardToken -> stakingToken -> Rewards
+
+    // rewardToken -> stakedToken -> Rewards
     mapping(IERC20 => mapping(IERC20 => StakerRewards)) public stakerRewards;
+
+    // rewardToken => undistributedRewards
     mapping(IERC20 => uint256) public undistributedRewards;
-    mapping(IERC20 => uint256) public rescuedFunds;
+
+    IERC20[] public rewardTokens;
 
     /**
      * @dev Emitted when an account stakes
@@ -333,7 +339,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
             return;
         }
         undistributedRewards[rewardToken] = 0;
-        rescuedFunds[rewardToken] += amount;
+        _rewardDistributions[rewardToken].farmRewards.unclaimedRewards -= amount;
         rewardToken.safeTransfer(owner(), amount);
     }
 
@@ -397,7 +403,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     }
 
     function _rewardBalance(IERC20 rewardToken) internal view returns (uint256) {
-        return rewardToken.balanceOf(address(this)) - stakes[rewardToken].totalStaked + rescuedFunds[rewardToken];
+        return rewardToken.balanceOf(address(this)) - stakes[rewardToken].totalStaked;
     }
 
     function _updateTokenFarmRewards(IERC20 rewardToken, IERC20 stakedToken) internal {

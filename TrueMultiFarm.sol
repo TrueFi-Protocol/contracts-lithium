@@ -223,6 +223,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         }
     }
 
+    // Warning: calling this method will nullify your rewards. Never call it unless you're sure what you are doing!
+    function emergencyExit(IERC20 stakedToken) external {
+        _unstake(stakedToken, stakes[stakedToken].staked[msg.sender]);
+    }
+
     /*
      * What proportional share of rewards get distributed to this token?
      * The denominator is visible in the public `shares()` view.

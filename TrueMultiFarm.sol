@@ -241,7 +241,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         uint256 tokensLength = stakedTokens.length;
 
         require(tokensLength == updatedShares.length, "TrueMultiFarm: Array lengths mismatch");
-        distribute();
+        _distribute(rewardToken);
 
         for (uint256 i = 0; i < tokensLength; i++) {
             _updateTokenFarmRewards(rewardToken, stakedTokens[i]);
@@ -342,7 +342,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      */
     function distribute() internal {
         uint256 rewardTokensLength = rewardTokens.length;
-        // TODO optimize to distribute only tokens that matter
+
         for (uint256 i = 0; i < rewardTokensLength; i++) {
             _distribute(rewardTokens[i]);
         }

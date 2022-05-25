@@ -50,7 +50,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     mapping(IERC20 => Stakes) public stakes;
 
     // rewardToken => reward info
-    mapping(IERC20 => RewardDistribution) _rewardDistributions;
+    mapping(IERC20 => RewardDistribution) rewardDistributions;
 
     // stakedToken => rewardToken[]
     mapping(IERC20 => IERC20[]) public rewardsAvailable;
@@ -100,7 +100,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     }
 
     function getDistributor(IERC20 rewardToken) external view returns (ITrueDistributor) {
-        return _rewardDistributions[rewardToken].distributor;
+        return rewardDistributions[rewardToken].distributor;
     }
 
     function getRewardTokens() external view returns (IERC20[] memory) {
@@ -108,11 +108,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     }
 
     function getShares(IERC20 rewardToken, IERC20 stakedToken) external view returns (uint256) {
-        return _rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
+        return rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
     }
 
     function getTotalShares(IERC20 rewardToken) external view returns (uint256) {
-        return _rewardDistributions[rewardToken].shares.totalStaked;
+        return rewardDistributions[rewardToken].shares.totalStaked;
     }
 
     function getAvailableRewardsForToken(IERC20 stakedToken) external view returns (IERC20[] memory) {
@@ -129,10 +129,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     function addDistributor(ITrueDistributor distributor) external onlyOwner {
         require(distributor.farm() == address(this), "TrueMultiFarm: Distributor farm is not set");
         IERC20 rewardToken = distributor.trustToken();
-        if (address(_rewardDistributions[rewardToken].distributor) == address(0)) {
+        if (address(rewardDistributions[rewardToken].distributor) == address(0)) {
             rewardTokens.push(rewardToken);
         }
-        _rewardDistributions[rewardToken].distributor = distributor;
+        rewardDistributions[rewardToken].distributor = distributor;
 
         emit DistributorAdded(rewardToken, distributor);
     }
@@ -147,7 +147,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
             }
         }
 
-        delete _rewardDistributions[rewardToken].distributor;
+        delete rewardDistributions[rewardToken].distributor;
     }
 
     /**
@@ -233,7 +233,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * The denominator is visible in the public `shares()` view.
      */
     function getShare(IERC20 rewardToken, IERC20 stakedToken) external view returns (uint256) {
-        return _rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
+        return rewardDistributions[rewardToken].shares.staked[address(stakedToken)];
     }
 
     /**
@@ -258,7 +258,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
             _updateTokenFarmRewards(rewardToken, stakedTokens[i]);
         }
 
-        Stakes storage shares = _rewardDistributions[rewardToken].shares;
+        Stakes storage shares = rewardDistributions[rewardToken].shares;
 
         for (uint256 i = 0; i < tokensLength; i++) {
             uint256 oldStaked = shares.staked[address(stakedTokens[i])];
@@ -322,7 +322,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
                 continue;
             }
 
-            FarmRewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+            FarmRewards storage farmRewards = rewardDistributions[rewardToken].farmRewards;
             farmRewards.unclaimedRewards -= rewardToClaim;
 
             rewardToken.safeTransfer(msg.sender, rewardToClaim);
@@ -344,7 +344,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
             return;
         }
         undistributedRewards[rewardToken] = 0;
-        _rewardDistributions[rewardToken].farmRewards.unclaimedRewards -= amount;
+        rewardDistributions[rewardToken].farmRewards.unclaimedRewards -= amount;
         rewardToken.safeTransfer(owner(), amount);
     }
 
@@ -360,7 +360,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     }
 
     function _distribute(IERC20 rewardToken) internal {
-        ITrueDistributor distributor = _rewardDistributions[rewardToken].distributor;
+        ITrueDistributor distributor = rewardDistributions[rewardToken].distributor;
         if (address(distributor) != address(0) && distributor.nextDistribution() > 0 && distributor.farm() == address(this)) {
             distributor.distribute();
         }
@@ -375,12 +375,12 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * 3. Increase cumulativeRewardPerToken by R/total shares
      */
     function _updateCumulativeRewardPerShare(IERC20 rewardToken) internal {
-        FarmRewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+        FarmRewards storage farmRewards = rewardDistributions[rewardToken].farmRewards;
         uint256 newUnclaimedRewards = _rewardBalance(rewardToken);
         uint256 rewardSinceLastUpdate = (newUnclaimedRewards - farmRewards.unclaimedRewards) * PRECISION;
 
         // if there are sub farms increase their value per share
-        uint256 totalStaked = _rewardDistributions[rewardToken].shares.totalStaked;
+        uint256 totalStaked = rewardDistributions[rewardToken].shares.totalStaked;
         if (totalStaked > 0) {
             farmRewards.unclaimedRewards = newUnclaimedRewards;
             farmRewards.cumulativeRewardPerShare += rewardSinceLastUpdate / totalStaked;
@@ -412,7 +412,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     }
 
     function _updateTokenFarmRewards(IERC20 rewardToken, IERC20 stakedToken) internal {
-        RewardDistribution storage distribution = _rewardDistributions[rewardToken];
+        RewardDistribution storage distribution = rewardDistributions[rewardToken];
         FarmRewards storage farmRewards = distribution.farmRewards;
         uint256 totalStaked = stakes[stakedToken].totalStaked;
         uint256 cumulativeRewardPerShareChange = farmRewards.cumulativeRewardPerShare -
@@ -435,10 +435,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         IERC20 stakedToken,
         address account
     ) internal view returns (uint256) {
-        Stakes storage shares = _rewardDistributions[rewardToken].shares;
-        FarmRewards storage farmRewards = _rewardDistributions[rewardToken].farmRewards;
+        Stakes storage shares = rewardDistributions[rewardToken].shares;
+        FarmRewards storage farmRewards = rewardDistributions[rewardToken].farmRewards;
         StakerRewards storage _stakerRewards = stakerRewards[rewardToken][stakedToken];
-        ITrueDistributor distributor = _rewardDistributions[rewardToken].distributor;
+        ITrueDistributor distributor = rewardDistributions[rewardToken].distributor;
 
         uint256 stakedAmount = stakes[stakedToken].staked[account];
         if (stakedAmount == 0) {

@@ -13,6 +13,8 @@ interface ITruefiPool is IERC20WithDecimals {
     function join(uint256 amount) external;
 
     function liquidExit(uint256 amount) external;
+
+    function poolValue() external view returns (uint256);
 }
 
 interface ITrueLegacyMultiFarm {

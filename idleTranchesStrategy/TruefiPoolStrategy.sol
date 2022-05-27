@@ -22,6 +22,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     IERC20WithDecimals private _token;
     IERC20WithDecimals internal _rewardToken;
 
+    uint256 private _oneToken;
     uint8 internal _rewardTokenDecimals;
     uint8 internal _poolDecimals;
 
@@ -31,6 +32,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     function initialize(ITruefiPool pool, ITrueLegacyMultiFarm farm) external initializer {
         _pool = pool;
         _token = pool.token();
+        _oneToken = 10**_token.decimals();
         _farm = farm;
         _rewardToken = farm.rewardToken();
         _rewardTokenDecimals = _rewardToken.decimals();
@@ -54,7 +56,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     }
 
     function oneToken() external view returns (uint256) {
-        return 10**_token.decimals();
+        return _oneToken;
     }
 
     function redeemRewards(bytes calldata) external returns (uint256[] memory) {
@@ -100,8 +102,11 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return 0;
     }
 
-    function price() external pure returns (uint256) {
-        revert("Not implemented");
+    function price() external view returns (uint256) {
+        if (_pool.totalSupply() == 0) {
+            return _oneToken;
+        }
+        return (_pool.poolValue() * _oneToken) / _pool.totalSupply();
     }
 
     function getRewardTokens() external pure returns (address[] memory) {

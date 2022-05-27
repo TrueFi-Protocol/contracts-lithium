@@ -5,8 +5,8 @@ import {IAllowList} from "./interfaces/IAllowList.sol";
 import {IBasePortfolio} from "./interfaces/IBasePortfolio.sol";
 
 contract AllowListDepositStrategy {
-    IAllowList public allowList;
-    uint256 public allowListIndex;
+    IAllowList public immutable allowList;
+    uint256 public immutable allowListIndex;
 
     constructor(IAllowList _allowList, uint256 _allowListIndex) {
         allowList = _allowList;

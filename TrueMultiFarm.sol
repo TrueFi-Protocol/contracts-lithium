@@ -85,6 +85,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     event Claim(IERC20 indexed token, address indexed who, uint256 amountClaimed);
 
     event DistributorAdded(IERC20 indexed rewardToken, ITrueDistributor indexed distributor);
+    event DistributorRemoved(IERC20 indexed rewardToken);
 
     /**
      * @dev Update all rewards associated with the token and msg.sender
@@ -148,6 +149,8 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         }
 
         delete rewardDistributions[rewardToken].distributor;
+
+        emit DistributorRemoved(rewardToken);
     }
 
     /**

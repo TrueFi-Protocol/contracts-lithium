@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.10;
+pragma solidity ^0.8.10;
 
 import {IAllowList} from "./interfaces/IAllowList.sol";
 import {IBasePortfolio} from "./interfaces/IBasePortfolio.sol";

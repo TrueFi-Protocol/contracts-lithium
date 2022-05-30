@@ -93,6 +93,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     modifier update(IERC20 token) {
         IERC20[] memory _rewardsAvailable = rewardsAvailable[token];
         uint256 _rewardsAvailableLength = _rewardsAvailable.length;
+
         for (uint256 i; i < _rewardsAvailableLength; i++) {
             _distribute(_rewardsAvailable[i]);
         }
@@ -140,9 +141,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
 
     function removeDistributor(IERC20 rewardToken) external onlyOwner {
         _distribute(rewardToken);
-        for (uint256 i = 0; i < rewardTokens.length; i++) {
+        uint256 rewardTokensLength = rewardTokens.length;
+
+        for (uint256 i = 0; i < rewardTokensLength; i++) {
             if (rewardTokens[i] == rewardToken) {
-                rewardTokens[i] = rewardTokens[rewardTokens.length - 1];
+                rewardTokens[i] = rewardTokens[rewardTokensLength - 1];
                 rewardTokens.pop();
                 break;
             }
@@ -278,9 +281,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
 
     function _removeReward(IERC20 rewardToken, IERC20 stakedToken) internal {
         IERC20[] storage rewardsAvailableForToken = rewardsAvailable[stakedToken];
-        for (uint256 i = 0; i < rewardsAvailableForToken.length; i++) {
+        uint256 rewardsAvailableForTokenLength = rewardsAvailableForToken.length;
+
+        for (uint256 i = 0; i < rewardsAvailableForTokenLength; i++) {
             if (rewardsAvailableForToken[i] == rewardToken) {
-                rewardsAvailableForToken[i] = rewardsAvailableForToken[rewardsAvailableForToken.length - 1];
+                rewardsAvailableForToken[i] = rewardsAvailableForToken[rewardsAvailableForTokenLength - 1];
                 rewardsAvailableForToken.pop();
                 return;
             }
@@ -307,6 +312,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
 
     function _claim(IERC20 stakedToken, IERC20[] memory rewards) internal {
         uint256 rewardsLength = rewards.length;
+
         for (uint256 i = 0; i < rewardsLength; i++) {
             IERC20 rewardToken = rewards[i];
             StakerRewards storage _stakerRewards = stakerRewards[rewardToken][stakedToken];
@@ -396,10 +402,11 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
      * The function must be called before any modification of staker's stake and to update values when claiming rewards
      */
     function updateRewards(IERC20 stakedToken) internal {
-        uint256 rewardLength = rewardsAvailable[stakedToken].length;
+        IERC20[] storage rewardsAvailableForToken = rewardsAvailable[stakedToken];
+        uint256 rewardLength = rewardsAvailableForToken.length;
 
         for (uint256 i = 0; i < rewardLength; i++) {
-            _updateTokenFarmRewards(rewardsAvailable[stakedToken][i], stakedToken);
+            _updateTokenFarmRewards(rewardsAvailableForToken[i], stakedToken);
         }
     }
 

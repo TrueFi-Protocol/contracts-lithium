@@ -261,13 +261,14 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         Stakes storage shares = rewardDistributions[rewardToken].shares;
 
         for (uint256 i = 0; i < tokensLength; i++) {
-            uint256 oldStaked = shares.staked[address(stakedTokens[i])];
-            shares.staked[address(stakedTokens[i])] = updatedShares[i];
+            IERC20 stakedToken = stakedTokens[i];
+            uint256 oldStaked = shares.staked[address(stakedToken)];
+            shares.staked[address(stakedToken)] = updatedShares[i];
             shares.totalStaked = shares.totalStaked - oldStaked + updatedShares[i];
             if (updatedShares[i] == 0) {
-                _removeReward(rewardToken, stakedTokens[i]);
+                _removeReward(rewardToken, stakedToken);
             } else if (oldStaked == 0) {
-                rewardsAvailable[stakedTokens[i]].push(rewardToken);
+                rewardsAvailable[stakedToken].push(rewardToken);
             }
         }
     }

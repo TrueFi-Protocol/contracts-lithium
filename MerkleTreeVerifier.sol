@@ -3,9 +3,9 @@ pragma solidity ^0.8.10;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import {IAllowList} from "./interfaces/IAllowList.sol";
+import {IMerkleTreeVerifier} from "./interfaces/IMerkleTreeVerifier.sol";
 
-contract AllowList is AccessControl, IAllowList {
+contract MerkleTreeVerifier is AccessControl, IMerkleTreeVerifier {
     mapping(uint256 => bytes32) public roots;
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 

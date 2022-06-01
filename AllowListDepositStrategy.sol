@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
-import {IAllowList} from "./interfaces/IAllowList.sol";
+import {IMerkleTreeVerifier} from "./interfaces/IMerkleTreeVerifier.sol";
 import {IBasePortfolio} from "./interfaces/IBasePortfolio.sol";
 
 contract AllowListDepositStrategy {
-    IAllowList public immutable allowList;
+    IMerkleTreeVerifier public immutable verifier;
     uint256 public immutable allowListIndex;
 
-    constructor(IAllowList _allowList, uint256 _allowListIndex) {
-        allowList = _allowList;
+    constructor(IMerkleTreeVerifier _verifier, uint256 _allowListIndex) {
+        verifier = _verifier;
         allowListIndex = _allowListIndex;
     }
 
@@ -19,7 +19,7 @@ contract AllowListDepositStrategy {
         bytes32[] calldata merkleProof
     ) public {
         require(
-            allowList.verify(allowListIndex, keccak256(abi.encodePacked(msg.sender)), merkleProof),
+            verifier.verify(allowListIndex, keccak256(abi.encodePacked(msg.sender)), merkleProof),
             "AllowListDepositStrategy: Invalid proof"
         );
         portfolio.deposit(amount, msg.sender);

@@ -2,39 +2,39 @@
 pragma solidity ^0.8.10;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {IERC20WithDecimals} from "../idleTranchesStrategy/ITruefiPool.sol";
 import {ABDKMath64x64} from "./Log.sol";
-import {MockERC20} from "./MockERC20.sol";
 
-contract MockTruefiPool is MockERC20 {
-    using SafeERC20 for MockERC20;
+contract MockTruefiPool is ERC20 {
+    using SafeERC20 for IERC20WithDecimals;
 
     uint256 private constant BASIS_PRECISION = 10000;
 
     uint256 private _poolValue;
     uint256 private _liquidValue;
 
-    MockERC20 public token;
+    IERC20WithDecimals public token;
     uint256 public joiningFee;
     uint256 public claimableFees;
 
     mapping(address => uint256) latestJoinBlock;
 
     event Joined(address indexed staker, uint256 deposited, uint256 minted);
-    event Exited(address indexed staker, uint256 amount);
+    event Exited(address indexed staker, uint256 amountToWithdraw, uint256 finalAmountToWithdraw);
+    event JoiningFeeChanged(uint256 newFee);
 
     constructor(
-        MockERC20 _poolToken,
+        IERC20WithDecimals _poolToken,
         string memory _poolName,
-        string memory _poolSymbol,
-        uint8 _poolDecimals
-    ) MockERC20(_poolName, _poolSymbol, _poolDecimals) {
+        string memory _poolSymbol
+    ) ERC20(_poolName, _poolSymbol) {
         token = _poolToken;
     }
 
-    function setTotalSupply(uint256 __totalSupply) external {
-        _totalSupply = __totalSupply;
+    function decimals() public pure override returns (uint8) {
+        return 6;
     }
 
     function setPoolValue(uint256 __poolValue) external {
@@ -51,6 +51,12 @@ contract MockTruefiPool is MockERC20 {
 
     function liquidValue() public view returns (uint256) {
         return _liquidValue;
+    }
+
+    function setJoiningFee(uint256 fee) external {
+        require(fee <= BASIS_PRECISION, "TrueFiPool: Fee cannot exceed transaction value");
+        joiningFee = fee;
+        emit JoiningFeeChanged(fee);
     }
 
     function join(uint256 amount) external {
@@ -70,17 +76,17 @@ contract MockTruefiPool is MockERC20 {
         require(amount <= balanceOf(msg.sender), "TrueFiPool: Insufficient funds");
 
         uint256 amountToWithdraw = (poolValue() * amount) / totalSupply();
-        amountToWithdraw = (amountToWithdraw * liquidExitPenalty(amountToWithdraw)) / BASIS_PRECISION;
-        require(amountToWithdraw <= liquidValue(), "TrueFiPool: Not enough liquidity in pool");
+        uint256 finalAmountToWithdraw = (amountToWithdraw * liquidExitPenalty(amountToWithdraw)) / BASIS_PRECISION;
+        require(finalAmountToWithdraw <= liquidValue(), "TrueFiPool: Not enough liquidity in pool");
 
         // burn tokens sent
         _burn(msg.sender, amount);
 
-        // ensureSufficientLiquidity(amountToWithdraw); // TODO: should we keep it?
+        // ensureSufficientLiquidity(finalAmountToWithdraw); // TODO: should we keep it?
 
-        token.safeTransfer(msg.sender, amountToWithdraw);
+        token.safeTransfer(msg.sender, finalAmountToWithdraw);
 
-        emit Exited(msg.sender, amountToWithdraw);
+        emit Exited(msg.sender, amountToWithdraw, finalAmountToWithdraw);
     }
 
     function liquidExitPenalty(uint256 amount) public view returns (uint256) {

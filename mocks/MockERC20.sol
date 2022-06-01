@@ -3,7 +3,7 @@ pragma solidity ^0.8.10;
 
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Context} from "@openzeppelin/contracts/utils/Context.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20WithDecimals} from "../idleTranchesStrategy/ITruefiPool.sol";
 
 /**
  * @dev Implementation of the {IERC20} interface.
@@ -29,7 +29,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * functions have been added to mitigate the well-known issues around setting
  * allowances. See {IERC20-approve}.
  */
-contract MockERC20 is Context, IERC20 {
+contract MockERC20 is Context, IERC20WithDecimals {
     using Address for address;
 
     mapping(address => uint256) private _balances;
@@ -243,6 +243,10 @@ contract MockERC20 is Context, IERC20 {
         _totalSupply = _totalSupply + amount;
         _balances[account] = _balances[account] + amount;
         emit Transfer(address(0), account, amount);
+    }
+
+    function mint(address account, uint256 amount) external {
+        _mint(account, amount);
     }
 
     /**

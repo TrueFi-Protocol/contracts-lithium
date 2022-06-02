@@ -59,7 +59,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return _oneToken;
     }
 
-    function redeemRewards(bytes calldata) external returns (uint256[] memory) {
+    function _redeemRewards() internal returns (uint256[] memory) {
         uint256 balanceBefore = _rewardToken.balanceOf(address(this));
         _farm.claim(_getTokensToClaim());
         uint256 balanceAfter = _rewardToken.balanceOf(address(this));
@@ -74,6 +74,10 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         _rewardToken.safeTransfer(msg.sender, stakerRewards);
 
         return _getRewardsArray(stakerRewards);
+    }
+
+    function redeemRewards(bytes calldata) external returns (uint256[] memory) {
+        return _redeemRewards();
     }
 
     function _getNewCumulativeRewardsPerToken(uint256 claimedRewards, uint256 totalStaked) internal view returns (uint256) {
@@ -153,7 +157,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         tokensReceived = balanceAfter - balanceBefore;
         _token.safeTransfer(msg.sender, tokensReceived);
 
-        // TODO: set cumulativeRewardsPerToken + rewards
+        _redeemRewards();
     }
 
     function redeemUnderlying(uint256 _amount) external pure returns (uint256) {

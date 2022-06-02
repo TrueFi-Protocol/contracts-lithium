@@ -109,8 +109,9 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return (_pool.poolValue() * _oneToken) / _pool.totalSupply();
     }
 
-    function getRewardTokens() external pure returns (address[] memory) {
-        revert("Not implemented");
+    function getRewardTokens() external view returns (address[] memory rewardTokens) {
+        rewardTokens = new address[](1);
+        rewardTokens[0] = address(_rewardToken);
     }
 
     function deposit(uint256 _amount) external returns (uint256 tfPoolTokensReceived) {

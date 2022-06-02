@@ -140,12 +140,14 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         }
     }
 
-    function redeem(uint256 _amount) external returns (uint256 tokensReceived) {
-        _burn(msg.sender, _amount);
-        _farm.unstake(_pool, _amount);
+    function redeem(uint256 amount) external returns (uint256 tokensReceived) {
+        require(amount > 0, "TruefiPoolStrategy: Redeem amount must be greater than 0");
+
+        _burn(msg.sender, amount);
+        _farm.unstake(_pool, amount);
 
         uint256 balanceBefore = _token.balanceOf(address(this));
-        _pool.liquidExit(_amount);
+        _pool.liquidExit(amount);
         uint256 balanceAfter = _token.balanceOf(address(this));
 
         tokensReceived = balanceAfter - balanceBefore;

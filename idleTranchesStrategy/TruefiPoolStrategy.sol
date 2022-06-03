@@ -16,6 +16,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     using SafeERC20 for IERC20WithDecimals;
 
     uint256 private constant PRECISION = 1e30;
+    uint256 private constant BASIS_POINTS = 1e4;
 
     ITruefiPool private _pool;
     ITrueLegacyMultiFarm internal _farm;
@@ -144,7 +145,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         }
     }
 
-    function redeem(uint256 amount) external returns (uint256 tokensReceived) {
+    function redeem(uint256 amount) public returns (uint256 tokensReceived) {
         require(amount > 0, "TruefiPoolStrategy: Redeem amount must be greater than 0");
 
         _burn(msg.sender, amount);
@@ -160,9 +161,49 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         _redeemRewards();
     }
 
-    function redeemUnderlying(uint256 _amount) external pure returns (uint256) {
-        _amount = 0;
-        revert("Not implemented");
+    function redeemUnderlying(uint256 amount) external returns (uint256) {
+        require(amount > 0, "TruefiPoolStrategy: Redeem amount must be greater than 0");
+        int256 amountInBasisPoints = int256(amount * BASIS_POINTS);
+
+        uint256 liquidValue = _pool.liquidValue();
+        require(applyPenalty(liquidValue) >= amountInBasisPoints, "TruefiPoolStrategy: Redeem amount is too big");
+
+        uint256 low = amount;
+        uint256 high = (amount * 11) / 10; // penalty cannot be greater than 10% of amount
+
+        if (high > liquidValue) {
+            high = liquidValue;
+        }
+
+        uint256 oneTokenInBasisPoints = _oneToken * BASIS_POINTS;
+
+        while (high > low) {
+            uint256 x = (low + high) / 2;
+            int256 difference = applyPenalty(x) - amountInBasisPoints;
+            if (abs(difference) <= oneTokenInBasisPoints) {
+                return redeem(toTfAmount(x));
+            }
+            if (difference > 0) {
+                high = x;
+            } else {
+                low = x + 1;
+            }
+        }
+
+        uint256 estimatedAmount = (high + low) / 2;
+        return redeem(toTfAmount(estimatedAmount));
+    }
+
+    function applyPenalty(uint256 amount) internal view returns (int256) {
+        return int256(amount * _pool.liquidExitPenalty(amount));
+    }
+
+    function toTfAmount(uint256 amount) internal view returns (uint256) {
+        return (amount * _pool.totalSupply()) / _pool.poolValue();
+    }
+
+    function abs(int256 x) internal pure returns (uint256) {
+        return x >= 0 ? uint256(x) : uint256(-x);
     }
 
     function getApr() external pure returns (uint256) {

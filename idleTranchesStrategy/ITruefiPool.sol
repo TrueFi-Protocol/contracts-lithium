@@ -13,6 +13,8 @@ interface ITruefiPool is IERC20WithDecimals {
 
     function poolValue() external view returns (uint256);
 
+    function liquidValue() external view returns (uint256);
+
     function liquidExitPenalty(uint256 amount) external view returns (uint256);
 }
 

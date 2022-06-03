@@ -9,8 +9,9 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, IIdleCDOStrategy {
+contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, IIdleCDOStrategy, ReentrancyGuard {
     using SafeERC20 for ITruefiPool;
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20WithDecimals;
@@ -77,7 +78,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return _getRewardsArray(stakerRewards);
     }
 
-    function redeemRewards(bytes calldata) external returns (uint256[] memory) {
+    function redeemRewards(bytes calldata) external nonReentrant returns (uint256[] memory) {
         return _redeemRewards();
     }
 
@@ -119,7 +120,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         rewardTokens[0] = address(_rewardToken);
     }
 
-    function deposit(uint256 _amount) external returns (uint256 tfPoolTokensReceived) {
+    function deposit(uint256 _amount) external nonReentrant returns (uint256 tfPoolTokensReceived) {
         require(_amount > 0, "TruefiPoolStrategy: Deposit amount must be greater than 0");
 
         _token.safeTransferFrom(msg.sender, address(this), _amount);
@@ -145,7 +146,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         }
     }
 
-    function redeem(uint256 amount) public returns (uint256 tokensReceived) {
+    function _redeem(uint256 amount) internal returns (uint256 tokensReceived) {
         require(amount > 0, "TruefiPoolStrategy: Redeem amount must be greater than 0");
 
         _burn(msg.sender, amount);
@@ -161,7 +162,11 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         _redeemRewards();
     }
 
-    function redeemUnderlying(uint256 amount) external returns (uint256) {
+    function redeem(uint256 amount) external nonReentrant returns (uint256) {
+        return _redeem(amount);
+    }
+
+    function redeemUnderlying(uint256 amount) external nonReentrant returns (uint256) {
         require(amount > 0, "TruefiPoolStrategy: Redeem amount must be greater than 0");
         int256 amountInBasisPoints = int256(amount * BASIS_POINTS);
 
@@ -181,7 +186,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
             uint256 x = (low + high) / 2;
             int256 difference = applyPenalty(x) - amountInBasisPoints;
             if (abs(difference) <= oneTokenInBasisPoints) {
-                return redeem(toTfAmount(x));
+                return _redeem(toTfAmount(x));
             }
             if (difference > 0) {
                 high = x;
@@ -191,7 +196,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         }
 
         uint256 estimatedAmount = (high + low) / 2;
-        return redeem(toTfAmount(estimatedAmount));
+        return _redeem(toTfAmount(estimatedAmount));
     }
 
     function applyPenalty(uint256 amount) internal view returns (int256) {

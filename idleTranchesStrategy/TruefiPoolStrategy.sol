@@ -186,7 +186,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
             uint256 x = (low + high) / 2;
             int256 difference = applyPenalty(x) - amountInBasisPoints;
             if (abs(difference) <= oneTokenInBasisPoints) {
-                return _redeem(toTfAmount(x));
+                break;
             }
             if (difference > 0) {
                 high = x;
@@ -196,7 +196,11 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         }
 
         uint256 estimatedAmount = (high + low) / 2;
-        return _redeem(toTfAmount(estimatedAmount));
+        uint256 estimatedTfAmount = toTfAmount(estimatedAmount);
+        uint256 senderBalance = this.balanceOf(msg.sender);
+
+        require(estimatedTfAmount <= senderBalance, "TruefiPoolStrategy: Not enough funds for penalty");
+        return _redeem(estimatedTfAmount);
     }
 
     function applyPenalty(uint256 amount) internal view returns (int256) {

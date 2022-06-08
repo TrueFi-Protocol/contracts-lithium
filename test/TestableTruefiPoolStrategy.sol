@@ -19,12 +19,4 @@ contract TestableTruefiPoolStrategy is TruefiPoolStrategy {
     function rewardToken() external view returns (address) {
         return address(_rewardToken);
     }
-
-    function rewardTokenDecimals() external view returns (uint8) {
-        return _rewardTokenDecimals;
-    }
-
-    function poolDecimals() external view returns (uint8) {
-        return _poolDecimals;
-    }
 }

@@ -9,9 +9,9 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
-contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, IIdleCDOStrategy, ReentrancyGuard {
+contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeable, IIdleCDOStrategy, ReentrancyGuardUpgradeable {
     using SafeERC20 for ITruefiPool;
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20WithDecimals;
@@ -24,15 +24,24 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     IERC20WithDecimals private _token;
     IERC20WithDecimals internal _rewardToken;
 
-    uint256 public pendingRewards;
     uint256 private _oneToken;
 
+    address public idleCDO;
+    uint256 public pendingRewards;
+
     function initialize(ITruefiPool pool, ITrueLegacyMultiFarm farm) external initializer {
+        OwnableUpgradeable.__Ownable_init();
+        ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
         _pool = pool;
         _token = pool.token();
         _oneToken = 10**_token.decimals();
         _farm = farm;
         _rewardToken = farm.rewardToken();
+    }
+
+    modifier onlyIdleCDO() {
+        require(msg.sender == idleCDO, "TruefiPoolStrategy: Caller must be Idle CDO");
+        _;
     }
 
     function decimals() public pure override returns (uint8) {
@@ -55,6 +64,11 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return _oneToken;
     }
 
+    function setIdleCDO(address _idleCDO) external onlyOwner {
+        require(_idleCDO != address(0), "TruefiPoolStrategy: Address cannot be zero");
+        idleCDO = _idleCDO;
+    }
+
     function _redeemRewards() internal returns (uint256[] memory) {
         uint256 balanceBefore = _rewardToken.balanceOf(address(this));
         _farm.claim(_getTokensToClaim());
@@ -68,7 +82,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return _getRewardsArray(allRewards);
     }
 
-    function redeemRewards(bytes calldata) external nonReentrant returns (uint256[] memory) {
+    function redeemRewards(bytes calldata) external onlyIdleCDO nonReentrant returns (uint256[] memory) {
         return _redeemRewards();
     }
 
@@ -98,7 +112,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         rewardTokens[0] = address(_rewardToken);
     }
 
-    function deposit(uint256 _amount) external nonReentrant returns (uint256 tfPoolTokensReceived) {
+    function deposit(uint256 _amount) external onlyIdleCDO nonReentrant returns (uint256 tfPoolTokensReceived) {
         require(_amount > 0, "TruefiPoolStrategy: Deposit amount must be greater than 0");
 
         _token.safeTransferFrom(msg.sender, address(this), _amount);
@@ -135,11 +149,11 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         _redeemRewards();
     }
 
-    function redeem(uint256 amount) external nonReentrant returns (uint256) {
+    function redeem(uint256 amount) external onlyIdleCDO nonReentrant returns (uint256) {
         return _redeem(amount);
     }
 
-    function redeemUnderlying(uint256 amount) external nonReentrant returns (uint256) {
+    function redeemUnderlying(uint256 amount) external onlyIdleCDO nonReentrant returns (uint256) {
         require(amount > 0, "TruefiPoolStrategy: Redeem amount must be greater than 0");
         int256 amountInBasisPoints = int256(amount * BASIS_POINTS);
 

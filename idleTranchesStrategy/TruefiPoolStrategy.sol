@@ -3,7 +3,7 @@ pragma solidity ^0.8.10;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IIdleCDOStrategy} from "./IIdleCDOStrategy.sol";
-import {ITruefiPool, IERC20WithDecimals, ITrueLegacyMultiFarm} from "./ITruefiPool.sol";
+import {ITruefiPool, IERC20WithDecimals, ITrueLegacyMultiFarm, ITrueLender, ILoanToken} from "./ITruefiPool.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -21,6 +21,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
 
     ITruefiPool private _pool;
     ITrueLegacyMultiFarm internal _farm;
+    ITrueLender internal _lender;
     IERC20WithDecimals private _token;
     IERC20WithDecimals internal _rewardToken;
 
@@ -33,6 +34,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         OwnableUpgradeable.__Ownable_init();
         ReentrancyGuardUpgradeable.__ReentrancyGuard_init();
         _pool = pool;
+        _lender = pool.lender();
         _token = pool.token();
         _oneToken = 10**_token.decimals();
         _farm = farm;
@@ -202,8 +204,24 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return x >= 0 ? uint256(x) : uint256(-x);
     }
 
-    function getApr() external pure returns (uint256) {
-        revert("Not implemented");
+    // may be costly for big loans number
+    function getApr() external view returns (uint256) {
+        ILoanToken[] memory loans = _lender.loans(_pool);
+
+        uint256 amountSum;
+        uint256 weightedApySum;
+
+        for (uint256 i = 0; i < loans.length; i++) {
+            ILoanToken loan = loans[i];
+            uint256 amount = loan.amount();
+            amountSum += amount;
+            weightedApySum += amount * loan.apy();
+        }
+
+        amountSum += _pool.liquidValue();
+        require(amountSum > 0, "TruefiPoolStrategy: Loans value + liquid value is zero");
+
+        return weightedApySum / amountSum;
     }
 
     function _normalize(uint256 value, uint8 _decimals) internal pure returns (uint256) {

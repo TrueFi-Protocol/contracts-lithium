@@ -4,6 +4,12 @@ pragma solidity ^0.8.10;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20WithDecimals} from "../interfaces/IERC20WithDecimals.sol";
 
+interface ITrueLender {
+    function value(address) external pure returns (uint256);
+
+    function loans(ITruefiPool) external view returns (ILoanToken[] memory);
+}
+
 interface ITruefiPool is IERC20WithDecimals {
     function token() external view returns (IERC20WithDecimals);
 
@@ -16,6 +22,8 @@ interface ITruefiPool is IERC20WithDecimals {
     function liquidValue() external view returns (uint256);
 
     function liquidExitPenalty(uint256 amount) external view returns (uint256);
+
+    function lender() external view returns (ITrueLender);
 }
 
 interface ITrueLegacyMultiFarm {
@@ -28,4 +36,10 @@ interface ITrueLegacyMultiFarm {
     function claim(IERC20[] calldata tokens) external;
 
     function staked(IERC20 token, address staker) external view returns (uint256);
+}
+
+interface ILoanToken {
+    function apy() external view returns (uint256);
+
+    function amount() external view returns (uint256);
 }

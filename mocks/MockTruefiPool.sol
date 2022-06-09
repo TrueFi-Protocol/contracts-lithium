@@ -4,7 +4,7 @@ pragma solidity ^0.8.10;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {IERC20WithDecimals} from "../idleTranchesStrategy/ITruefiPool.sol";
+import {IERC20WithDecimals, ITrueLender} from "../idleTranchesStrategy/ITruefiPool.sol";
 import {ABDKMath64x64} from "./Log.sol";
 
 contract MockTruefiPool is ERC20 {
@@ -16,6 +16,7 @@ contract MockTruefiPool is ERC20 {
     uint256 private _liquidValue;
 
     IERC20WithDecimals public token;
+    ITrueLender public lender;
     uint256 public joiningFee;
     uint256 public claimableFees;
 
@@ -27,9 +28,11 @@ contract MockTruefiPool is ERC20 {
 
     constructor(
         IERC20WithDecimals _poolToken,
+        ITrueLender _lender,
         string memory _poolName,
         string memory _poolSymbol
     ) ERC20(_poolName, _poolSymbol) {
+        lender = _lender;
         token = _poolToken;
     }
 

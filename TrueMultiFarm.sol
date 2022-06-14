@@ -8,6 +8,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 
 import {ITrueDistributor} from "./interfaces/ITrueDistributor.sol";
 import {ITrueMultiFarm} from "./interfaces/ITrueMultiFarm.sol";
+import {Upgradeable} from "./access/Upgradeable.sol";
 
 /**
  * @title TrueMultiFarm
@@ -19,7 +20,7 @@ import {ITrueMultiFarm} from "./interfaces/ITrueMultiFarm.sol";
  * A share of a farm in the multifarm is it's stake
  */
 
-contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
+contract TrueMultiFarm is ITrueMultiFarm, Upgradeable {
     using SafeERC20 for IERC20;
 
     uint256 private constant PRECISION = 1e30;
@@ -62,6 +63,10 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
     mapping(IERC20 => uint256) public undistributedRewards;
 
     IERC20[] public rewardTokens;
+
+    function initialize() external initializer {
+        __Upgradeable_init(msg.sender);
+    }
 
     /**
      * @dev Emitted when an account stakes
@@ -128,7 +133,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         return stakes[token].staked[staker];
     }
 
-    function addDistributor(ITrueDistributor distributor) external onlyOwner {
+    function addDistributor(ITrueDistributor distributor) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(distributor.farm() == address(this), "TrueMultiFarm: Distributor farm is not set");
         IERC20 rewardToken = distributor.trustToken();
         if (address(rewardDistributions[rewardToken].distributor) == address(0)) {
@@ -139,7 +144,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         emit DistributorAdded(rewardToken, distributor);
     }
 
-    function removeDistributor(IERC20 rewardToken) external onlyOwner {
+    function removeDistributor(IERC20 rewardToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _distribute(rewardToken);
         uint256 rewardTokensLength = rewardTokens.length;
 
@@ -254,7 +259,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         IERC20 rewardToken,
         IERC20[] calldata stakedTokens,
         uint256[] calldata updatedShares
-    ) external onlyOwner {
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         uint256 tokensLength = stakedTokens.length;
 
         require(tokensLength == updatedShares.length, "TrueMultiFarm: Array lengths mismatch");
@@ -355,7 +360,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Ownable, Initializable {
         }
         undistributedRewards[rewardToken] = 0;
         rewardDistributions[rewardToken].farmRewards.unclaimedRewards -= amount;
-        rewardToken.safeTransfer(owner(), amount);
+        rewardToken.safeTransfer(getRoleMember(DEFAULT_ADMIN_ROLE, 0), amount);
     }
 
     /**

@@ -19,13 +19,15 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
     uint256 private constant PRECISION = 1e30;
     uint256 private constant BASIS_POINTS = 1e4;
 
-    ITruefiPool private _pool;
+    ITruefiPool internal _pool;
     ITrueLegacyMultiFarm internal _farm;
     ITrueLender internal _lender;
-    IERC20WithDecimals private _token;
+    IERC20WithDecimals internal _token;
     IERC20WithDecimals internal _rewardToken;
+    IERC20[] internal _farmTokens;
+    address[] internal _rewardTokens;
 
-    uint256 private _oneToken;
+    uint256 internal _oneToken;
 
     address public idleCDO;
     uint256 public pendingRewards;
@@ -39,6 +41,12 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         _oneToken = 10**_token.decimals();
         _farm = farm;
         _rewardToken = farm.rewardToken();
+
+        _farmTokens = toArray(IERC20(_pool));
+        _rewardTokens = toArray(address(_rewardToken));
+
+        _token.safeApprove(address(_pool), type(uint256).max);
+        _pool.safeApprove(address(_farm), type(uint256).max);
     }
 
     modifier onlyIdleCDO() {
@@ -73,7 +81,7 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
 
     function _redeemRewards() internal returns (uint256[] memory) {
         uint256 balanceBefore = _rewardToken.balanceOf(address(this));
-        _farm.claim(_getTokensToClaim());
+        _farm.claim(_farmTokens);
         uint256 balanceAfter = _rewardToken.balanceOf(address(this));
         uint256 newRewards = balanceAfter - balanceBefore;
         uint256 allRewards = newRewards + pendingRewards;
@@ -86,11 +94,6 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
 
     function redeemRewards(bytes calldata) external onlyIdleCDO nonReentrant returns (uint256[] memory) {
         return _redeemRewards();
-    }
-
-    function _getTokensToClaim() internal view returns (IERC20[] memory tokens) {
-        tokens = new IERC20[](1);
-        tokens[0] = IERC20(_pool);
     }
 
     function _getRewardsArray(uint256 rewards) internal pure returns (uint256[] memory rewardsArray) {
@@ -109,16 +112,14 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         return (_pool.poolValue() * _oneToken) / _pool.totalSupply();
     }
 
-    function getRewardTokens() external view returns (address[] memory rewardTokens) {
-        rewardTokens = new address[](1);
-        rewardTokens[0] = address(_rewardToken);
+    function getRewardTokens() external view returns (address[] memory) {
+        return _rewardTokens;
     }
 
     function deposit(uint256 _amount) external onlyIdleCDO nonReentrant returns (uint256 tfPoolTokensReceived) {
         require(_amount > 0, "TruefiPoolStrategy: Deposit amount must be greater than 0");
 
         _token.safeTransferFrom(msg.sender, address(this), _amount);
-        _token.approve(address(_pool), _amount);
         uint256 tfTokensBalanceBefore = _pool.balanceOf(address(this));
         _pool.join(_amount);
         uint256 tfTokensBalanceAfter = _pool.balanceOf(address(this));
@@ -126,7 +127,6 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         tfPoolTokensReceived = tfTokensBalanceAfter - tfTokensBalanceBefore;
         _mint(msg.sender, tfPoolTokensReceived);
 
-        _pool.approve(address(_farm), tfPoolTokensReceived);
         uint256 rewardsBalanceBefore = _rewardToken.balanceOf(address(this));
         _farm.stake(_pool, tfPoolTokensReceived);
         uint256 rewardsBalanceAfter = _rewardToken.balanceOf(address(this));
@@ -244,5 +244,15 @@ contract TruefiPoolStrategy is Initializable, OwnableUpgradeable, ERC20Upgradeab
         } else {
             return value * 10**(_decimals - 18);
         }
+    }
+
+    function toArray(address _address) internal pure returns (address[] memory array) {
+        array = new address[](1);
+        array[0] = _address;
+    }
+
+    function toArray(IERC20 _erc20) internal pure returns (IERC20[] memory array) {
+        array = new IERC20[](1);
+        array[0] = _erc20;
     }
 }

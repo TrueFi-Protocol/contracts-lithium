@@ -4,6 +4,13 @@ pragma solidity ^0.8.10;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface ITrueDistributor {
+    function initialize(
+        uint256 _distributionStart,
+        uint256 _duration,
+        uint256 _amount,
+        IERC20 _trustToken
+    ) external;
+
     //TODO rename
     function trustToken() external view returns (IERC20);
 

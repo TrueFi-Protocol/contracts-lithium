@@ -4,13 +4,20 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {ITrueDistributor} from "./interfaces/ITrueDistributor.sol";
 
+interface IOwnable {
+    function transferOwnership(address newOwner) external;
+}
+
 contract DistributorFactory {
     event DistributorCreated(ITrueDistributor distributor);
 
     address public implementation;
+    address public multifarm;
+    ITrueDistributor[] public distributors;
 
-    constructor(address _implementation) {
+    constructor(address _implementation, address _multifarm) {
         implementation = _implementation;
+        multifarm = _multifarm;
     }
 
     function create(
@@ -21,6 +28,9 @@ contract DistributorFactory {
     ) external {
         ITrueDistributor deployed = ITrueDistributor(Clones.clone(implementation));
         deployed.initialize(_distributionStart, _duration, _amount, _rewardToken);
+        deployed.setFarm(multifarm);
+        IOwnable(address(deployed)).transferOwnership(msg.sender);
+        distributors.push(deployed);
 
         emit DistributorCreated(deployed);
     }

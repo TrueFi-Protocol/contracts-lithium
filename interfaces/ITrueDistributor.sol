@@ -21,4 +21,6 @@ interface ITrueDistributor {
     function nextDistribution() external view returns (uint256);
 
     function empty() external;
+
+    function setFarm(address newFarm) external;
 }

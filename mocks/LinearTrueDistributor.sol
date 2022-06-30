@@ -75,6 +75,7 @@ contract LinearTrueDistributor is ITrueDistributor, Ownable, Initializable {
         uint256 _amount,
         IERC20 _trustToken
     ) public initializer {
+        _transferOwnership(_msgSender());
         distributionStart = _distributionStart;
         lastDistribution = _distributionStart;
         duration = _duration;

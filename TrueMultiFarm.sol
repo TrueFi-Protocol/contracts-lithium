@@ -91,6 +91,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Upgradeable {
 
     event DistributorAdded(IERC20 indexed rewardToken, ITrueDistributor indexed distributor);
     event DistributorRemoved(IERC20 indexed rewardToken);
+    event SharesChanged(IERC20 indexed rewardToken, IERC20[] stakedTokens, uint256[] updatedShares);
 
     /**
      * @dev Update all rewards associated with the token and msg.sender
@@ -282,6 +283,8 @@ contract TrueMultiFarm is ITrueMultiFarm, Upgradeable {
                 rewardsAvailable[stakedToken].push(rewardToken);
             }
         }
+
+        emit SharesChanged(rewardToken, stakedTokens, updatedShares);
     }
 
     function _removeReward(IERC20 rewardToken, IERC20 stakedToken) internal {

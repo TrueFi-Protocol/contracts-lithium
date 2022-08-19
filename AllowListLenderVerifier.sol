@@ -21,7 +21,7 @@ contract AllowListLenderVerifier is ILenderVerifier {
         return verifier.verify(allowListIndex, keccak256(abi.encodePacked(lender)), bytesToBytes32Array(merkleProof));
     }
 
-    function bytesToBytes32Array(bytes memory data) public view returns (bytes32[] memory) {
+    function bytesToBytes32Array(bytes memory data) internal pure returns (bytes32[] memory) {
         uint256 dataLength = data.length;
         bytes32[] memory dataList = new bytes32[](dataLength / 32);
         uint256 index = 0;

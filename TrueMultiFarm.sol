@@ -136,7 +136,7 @@ contract TrueMultiFarm is ITrueMultiFarm, Upgradeable {
 
     function addDistributor(ITrueDistributor distributor) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(distributor.farm() == address(this), "TrueMultiFarm: Distributor farm is not set");
-        IERC20 rewardToken = distributor.trustToken();
+        IERC20 rewardToken = distributor.asset();
         if (address(rewardDistributions[rewardToken].distributor) == address(0)) {
             rewardTokens.push(rewardToken);
         }

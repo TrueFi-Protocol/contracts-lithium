@@ -8,11 +8,10 @@ interface ITrueDistributor {
         uint256 _distributionStart,
         uint256 _duration,
         uint256 _amount,
-        IERC20 _trustToken
+        IERC20 _asset
     ) external;
 
-    //TODO rename
-    function trustToken() external view returns (IERC20);
+    function asset() external view returns (IERC20);
 
     function farm() external view returns (address);
 
